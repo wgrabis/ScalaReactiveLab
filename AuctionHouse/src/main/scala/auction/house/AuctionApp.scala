@@ -2,7 +2,7 @@ package auction.house
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import auction.house.AuctionHouse.ActorStopped
+import auction.house.AuctionHouse.{ActorStopped, SellerActive}
 import auction.house.Seller.StartAuction
 
 import scala.concurrent.Await
@@ -14,6 +14,8 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 
 object AuctionHouse{
   case object Init
+  case object InitFSM
+  case object SellerActive
   case class ActorStopped(actorRef: ActorRef)
 }
 
@@ -22,9 +24,22 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
   var buyers : Array[ActorRef] = new Array[ActorRef](noBuyers)
   var auctions : Array[ActorRef] = new Array[ActorRef](noSellers)
 
+  var inactiveSellers = noSellers
+
   def init() = {
     for (i <- 0 until noSellers) {
       auctions(i) = context.actorOf(Props(new Auction(self ,FiniteDuration(2, "seconds"))))
+      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), auctions(i), 2)))
+    }
+
+    for (i <- 0  until noBuyers) {
+      buyers(i) = context.actorOf(Props(new Buyer(self ,10, auctions)))
+    }
+  }
+
+  def initFSM() = {
+    for (i <- 0 until noSellers) {
+      auctions(i) = context.actorOf(Props(new AuctionFSM(self ,FiniteDuration(2, "seconds"))))
       sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), auctions(i), 2)))
     }
 
@@ -38,8 +53,15 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       init()
       for (i <- 0 until noSellers)
         sellers(i) ! StartAuction
+    case AuctionHouse.InitFSM =>
+      initFSM()
+      for (i <- 0 until noSellers)
+        sellers(i) ! StartAuction
+    case SellerActive if inactiveSellers == 1 =>
       for (i <- 0  until noBuyers)
         buyers(i) ! Buyer.Init
+    case SellerActive =>
+      inactiveSellers -= 1
     case ActorStopped(_) if noSellers == 0 && noBuyers == 1 =>
       print("All auctions stopped, turning off")
       context.system.terminate

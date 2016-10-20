@@ -3,6 +3,7 @@ package auction.house
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.house.Auction.{Ignored, Sold, Start}
+import auction.house.AuctionHouse.SellerActive
 import auction.house.Seller.{AskForAuction, StartAuction}
 
 import scala.concurrent.duration.FiniteDuration

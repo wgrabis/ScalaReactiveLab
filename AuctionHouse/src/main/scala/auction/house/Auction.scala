@@ -2,7 +2,7 @@ package auction.house
 
 import akka.actor._
 import akka.event.LoggingReceive
-import auction.house.AuctionHouse.ActorStopped
+import auction.house.AuctionHouse.{ActorStopped, SellerActive}
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.concurrent._
@@ -39,6 +39,7 @@ class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor
     case Start(sellerAct, bidTimer) =>
       seller = sellerAct
       context.system.scheduler.scheduleOnce(bidTimer, self, Timeout)
+      auctionHouse ! SellerActive
       context become awaitFirstBid
 
   }
