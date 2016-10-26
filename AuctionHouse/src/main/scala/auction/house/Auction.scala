@@ -18,17 +18,18 @@ object Auction {
   }
   case object Timeout
   case object DeleteTimeout
+  case class AuctionDeleted(from: ActorRef)
 
 
   case class Sold(seller: ActorRef, buyer: ActorRef, amount: Int)
   case class BidChanged(newBuyer: ActorRef, amount: Int)
   case class InvalidBid(currentBid: Int, buyer: ActorRef)
-  case object Ignored
+  case class Ignored(from: ActorRef)
   case class AuctionsStopped(from: ActorRef)
 }
 
 
-class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor{
+class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
   import Auction._
 
   var seller: ActorRef = null
@@ -39,7 +40,7 @@ class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor
     case Start(sellerAct, bidTimer) =>
       seller = sellerAct
       context.system.scheduler.scheduleOnce(bidTimer, self, Timeout)
-      auctionHouse ! SellerActive
+      context.actorSelection("/user/auctionSearch") ! AuctionSearch.Register(self, title)
       context become awaitFirstBid
 
   }
@@ -50,7 +51,7 @@ class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor
         currentBid = amount
         context become awaitBids
     case Timeout =>
-      seller ! Ignored
+      seller ! Auction.Ignored(self)
       context.system.scheduler.scheduleOnce(deleteTimer, self, DeleteTimeout)
       context become awaitRelist
     case _ =>
@@ -78,7 +79,8 @@ class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor
       context become awaitFirstBid
     case DeleteTimeout =>
       println("Auction stopped, no relist ", currentBid)
-      auctionHouse ! ActorStopped(self)
+      seller ! AuctionDeleted(self)
+      context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
       context.stop(self)
     case _ =>
   }
@@ -86,7 +88,8 @@ class Auction(auctionHouse: ActorRef, deleteTimer: FiniteDuration) extends Actor
   def awaitDelete() : Actor.Receive = LoggingReceive{
     case DeleteTimeout =>
       println("Auction stopped, final amount ", currentBid)
-      auctionHouse ! ActorStopped(self)
+      context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
+      seller ! AuctionDeleted(self)
       context.stop(self)
     case _ =>
   }

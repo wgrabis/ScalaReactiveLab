@@ -2,8 +2,8 @@ package auction.house
 
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
-import auction.house.Auction.{Ignored, Sold, Start}
-import auction.house.AuctionHouse.SellerActive
+import auction.house.Auction.{AuctionDeleted, Sold, Start}
+import auction.house.AuctionHouse.{ActorStopped, SellerActive}
 import auction.house.Seller.{AskForAuction, StartAuction}
 
 import scala.concurrent.duration.FiniteDuration
@@ -16,24 +16,27 @@ object Seller{
   case class AskForAuction(from: ActorRef)
 }
 
-class Seller(bidTime: FiniteDuration, auction: ActorRef, var timesReList: Int) extends Actor{
+class Seller(bidTime: FiniteDuration, var timesReList: Int) extends Actor{
 
   def receive : Actor.Receive= LoggingReceive{
     case StartAuction =>
-      auction ! Start(self, bidTime)
+      val actor = context.actorOf(Props(new Auction("test", FiniteDuration(2, "seconds"))))
+      actor ! Start(self, bidTime)
+      context.actorSelection("/user/mainActor") ! SellerActive
       context become awaitForAuction
   }
 
   def awaitForAuction : Actor.Receive = LoggingReceive{
-    case Ignored if timesReList > 0=>
+    case Auction.Ignored(from: ActorRef) if timesReList > 0=>
       println("Relisting auction")
       timesReList -= 1
-      auction ! Start(self, bidTime)
-    case Ignored =>
+      from ! Start(self, bidTime)
+    case Auction.Ignored(_) =>
       println("Stopping seller, auction didn't sell ")
-      context.stop(self)
     case Sold(_, buyer, amount) =>
       println("Stopping seller, auction sold to ", buyer, " for ", amount)
+    case AuctionDeleted(from) =>
+      context.actorSelection("/user/mainActor") ! ActorStopped(self)
       context.stop(self)
   }
 

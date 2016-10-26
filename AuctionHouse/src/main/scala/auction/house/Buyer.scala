@@ -14,7 +14,7 @@ object Buyer{
   case object FindNewAuction
 }
 
-class Buyer(auctionHouse: ActorRef, cash: Int, auctions: Array[ActorRef]) extends Actor {
+class Buyer(auctionHouse: ActorRef, cash: Int, auctionToBid: String) extends Actor {
 
   require(cash > 0)
 
@@ -26,8 +26,12 @@ class Buyer(auctionHouse: ActorRef, cash: Int, auctions: Array[ActorRef]) extend
 
   def startBidding = LoggingReceive{
     case FindNewAuction =>
-      val ind = scala.util.Random.nextInt(auctions.length)
-      auctions(ind) ! Bid(scala.util.Random.nextInt(cash - 1) + 1, self)
+      context.actorSelection("/user/auctionSearch") ! AuctionSearch.Search(self, auctionToBid)
+
+    case AuctionSearch.Response(auction) =>
+      auction ! Bid(1, self)
+    case AuctionSearch.NotFound =>
+      self ! FindNewAuction
 
     case InvalidBid(amount, auction) if cash > amount =>
       auction ! Bid(amount + 1, self)

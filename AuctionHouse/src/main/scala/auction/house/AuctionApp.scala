@@ -28,33 +28,17 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
 
   def init() = {
     for (i <- 0 until noSellers) {
-      auctions(i) = context.actorOf(Props(new Auction(self ,FiniteDuration(2, "seconds"))))
-      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), auctions(i), 2)))
+      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), 2)))
     }
 
     for (i <- 0  until noBuyers) {
-      buyers(i) = context.actorOf(Props(new Buyer(self ,10, auctions)))
-    }
-  }
-
-  def initFSM() = {
-    for (i <- 0 until noSellers) {
-      auctions(i) = context.actorOf(Props(new AuctionFSM(self ,FiniteDuration(2, "seconds"))))
-      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), auctions(i), 2)))
-    }
-
-    for (i <- 0  until noBuyers) {
-      buyers(i) = context.actorOf(Props(new Buyer(self ,10, auctions)))
+      buyers(i) = context.actorOf(Props(new Buyer(self ,10, "test")))
     }
   }
 
   def receive = LoggingReceive{
     case AuctionHouse.Init =>
       init()
-      for (i <- 0 until noSellers)
-        sellers(i) ! StartAuction
-    case AuctionHouse.InitFSM =>
-      initFSM()
       for (i <- 0 until noSellers)
         sellers(i) ! StartAuction
     case SellerActive if inactiveSellers == 1 =>
@@ -75,7 +59,8 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
 
 object AuctionApp extends App {
   val system = ActorSystem("Reactive2")
-  val mainActor = system.actorOf(Props(new AuctionHouse(10, 5)), "mainActor")
+  val mainActor = system.actorOf(Props(new AuctionHouse(1, 1)), "mainActor")
+  val auctionSearch = system.actorOf(Props(new AuctionSearch), "auctionSearch")
 
   mainActor ! AuctionHouse.Init
 
