@@ -28,8 +28,9 @@ class Buyer(auctionHouse: ActorRef, cash: Int, auctionToBid: String) extends Act
     case FindNewAuction =>
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Search(self, auctionToBid)
 
-    case AuctionSearch.Response(auction) =>
-      auction ! Bid(1, self)
+    case AuctionSearch.ResponseMultiple(auctions) =>
+      val ind = scala.util.Random.nextInt(auctions.length)
+      auctions(ind) ! Bid(scala.util.Random.nextInt((cash - 1)/2) + 1, self)
     case AuctionSearch.NotFound =>
       self ! FindNewAuction
 

@@ -1,5 +1,7 @@
 package auction.house
 
+import java.util
+
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.house.Auction.{AuctionDeleted, Sold, Start}
@@ -16,12 +18,16 @@ object Seller{
   case class AskForAuction(from: ActorRef)
 }
 
-class Seller(bidTime: FiniteDuration, var timesReList: Int) extends Actor{
+class Seller(bidTime: FiniteDuration, var timesReList: Int, auctionItems: List[String]) extends Actor{
+
+  var auctionSize = auctionItems.size
 
   def receive : Actor.Receive= LoggingReceive{
     case StartAuction =>
-      val actor = context.actorOf(Props(new Auction("test", FiniteDuration(2, "seconds"))))
-      actor ! Start(self, bidTime)
+      for(item <- auctionItems) {
+        val actor = context.actorOf(Props(new Auction(item, FiniteDuration(2, "seconds"))))
+        actor ! Start(self, bidTime)
+      }
       context.actorSelection("/user/mainActor") ! SellerActive
       context become awaitForAuction
   }
@@ -35,9 +41,11 @@ class Seller(bidTime: FiniteDuration, var timesReList: Int) extends Actor{
       println("Stopping seller, auction didn't sell ")
     case Sold(_, buyer, amount) =>
       println("Stopping seller, auction sold to ", buyer, " for ", amount)
-    case AuctionDeleted(from) =>
+    case AuctionDeleted(from) if auctionSize == 1 =>
       context.actorSelection("/user/mainActor") ! ActorStopped(self)
       context.stop(self)
+    case AuctionDeleted(from) =>
+      auctionSize -= 1
   }
 
 }

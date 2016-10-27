@@ -78,7 +78,7 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       context.system.scheduler.scheduleOnce(bidTimer, self, Timeout)
       context become awaitFirstBid
     case DeleteTimeout =>
-      println("Auction stopped, no relist ", currentBid)
+      println("Auction ", title, " no relist ", currentBid)
       seller ! AuctionDeleted(self)
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
       context.stop(self)
@@ -87,7 +87,7 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
 
   def awaitDelete() : Actor.Receive = LoggingReceive{
     case DeleteTimeout =>
-      println("Auction stopped, final amount ", currentBid)
+      println("Auction",title ," stopped, final amount ", currentBid)
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
       seller ! AuctionDeleted(self)
       context.stop(self)
