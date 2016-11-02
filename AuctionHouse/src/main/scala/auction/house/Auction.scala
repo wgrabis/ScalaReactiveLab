@@ -54,11 +54,11 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       seller ! Auction.Ignored(self)
       context.system.scheduler.scheduleOnce(deleteTimer, self, DeleteTimeout)
       context become awaitRelist
-    case _ =>
+    case DeleteTimeout =>
   }
 
   def awaitBids() : Actor.Receive = LoggingReceive{
-    case Bid(amount, from) if amount > currentBid=>
+    case Bid(amount, from) if amount > currentBid =>
       buyer ! BidChanged(self, amount)
       buyer = from
       currentBid = amount
@@ -69,7 +69,7 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       buyer ! Sold(seller, buyer, currentBid)
       context.system.scheduler.scheduleOnce(deleteTimer, self, DeleteTimeout)
       context become awaitDelete
-    case _ =>
+    case DeleteTimeout =>
   }
 
   def awaitRelist() : Actor.Receive = LoggingReceive{
@@ -82,7 +82,6 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       seller ! AuctionDeleted(self)
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
       context.stop(self)
-    case _ =>
   }
 
   def awaitDelete() : Actor.Receive = LoggingReceive{
@@ -91,7 +90,6 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Remove(title)
       seller ! AuctionDeleted(self)
       context.stop(self)
-    case _ =>
   }
 
 }

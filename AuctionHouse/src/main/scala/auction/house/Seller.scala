@@ -38,9 +38,9 @@ class Seller(bidTime: FiniteDuration, var timesReList: Int, auctionItems: List[S
       timesReList -= 1
       from ! Start(self, bidTime)
     case Auction.Ignored(_) =>
-      println("Stopping seller, auction didn't sell ")
+      println("One of the auction didnt sell, auction didn't sell ")
     case Sold(_, buyer, amount) =>
-      println("Stopping seller, auction sold to ", buyer, " for ", amount)
+      println("One of the auction sold, auction sold to ", buyer, " for ", amount)
     case AuctionDeleted(from) if auctionSize == 1 =>
       context.actorSelection("/user/mainActor") ! ActorStopped(self)
       context.stop(self)

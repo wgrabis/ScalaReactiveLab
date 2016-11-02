@@ -21,31 +21,36 @@ class Buyer(auctionHouse: ActorRef, cash: Int, auctionToBid: String) extends Act
   def receive = LoggingReceive{
     case Init =>
       self ! FindNewAuction
-      context become startBidding
+      context become searchingAuction
   }
 
-  def startBidding = LoggingReceive{
+  def searchingAuction : Actor.Receive = LoggingReceive{
     case FindNewAuction =>
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Search(self, auctionToBid)
 
     case AuctionSearch.ResponseMultiple(auctions) =>
       val ind = scala.util.Random.nextInt(auctions.length)
       auctions(ind) ! Bid(scala.util.Random.nextInt((cash - 1)/2) + 1, self)
+      context become startBidding
     case AuctionSearch.NotFound =>
       self ! FindNewAuction
+  }
 
+  def startBidding : Actor.Receive = LoggingReceive{
     case InvalidBid(amount, auction) if cash > amount =>
       auction ! Bid(amount + 1, self)
     case InvalidBid(amount, auction) =>
       self ! FindNewAuction
+      context become searchingAuction
 
     case BidChanged(auction, amount) if cash > amount =>
       auction ! Bid(amount + 1, self)
     case BidChanged(auction, amount) =>
       self ! FindNewAuction
+      context become searchingAuction
 
     case Sold(seller, _, currentBid) =>
-      println("Seller bought item from ", seller, " for ", currentBid)
+      println("Buyer bought item from ", seller, " for ", currentBid)
       auctionHouse ! ActorStopped(self)
       context.stop(self)
   }
