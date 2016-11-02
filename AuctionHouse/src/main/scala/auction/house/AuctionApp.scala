@@ -5,7 +5,7 @@ import java.util
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
 import auction.house.AuctionHouse.{ActorStopped, SellerActive}
-import auction.house.Seller.StartAuction
+import auction.house.Seller.{StartAuction, StartAuctionFSM}
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
@@ -49,7 +49,7 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
     case AuctionHouse.Init =>
       init()
       for (i <- 0 until noSellers)
-        sellers(i) ! StartAuction
+        sellers(i) ! StartAuctionFSM
     case SellerActive if inactiveSellers == 1 =>
       for (i <- 0  until noBuyers)
         buyers(i) ! Buyer.Init
