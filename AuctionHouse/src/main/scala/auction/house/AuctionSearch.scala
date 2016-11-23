@@ -34,7 +34,10 @@ class AuctionSearch extends Actor{
       case _ =>
     }
 
-    result.toArray
+    if(result.nonEmpty)
+      result.toArray
+    else
+      null
   }
 
 

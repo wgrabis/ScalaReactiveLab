@@ -6,6 +6,11 @@ import auction.house.Auction.{Bid, BidChanged, InvalidBid, Sold}
 import auction.house.AuctionHouse.ActorStopped
 import auction.house.Buyer.{FindNewAuction, Init}
 
+
+import scala.concurrent.duration._
+import scala.concurrent._
+import ExecutionContext.Implicits.global
+
 /**
  * Created by Admin on 2016-10-19.
  */
@@ -35,7 +40,7 @@ class Buyer(auctionHouse: ActorRef, cash: Int, auctionToBid: String) extends Act
       auctions(ind) ! Bid(scala.util.Random.nextInt((cash - 1)/2) + 1, self)
       context become startBidding
     case AuctionSearch.NotFound =>
-      self ! FindNewAuction
+      context.system.scheduler.scheduleOnce(1 seconds, self, FindNewAuction)
   }
 
   def startBidding : Actor.Receive = LoggingReceive{

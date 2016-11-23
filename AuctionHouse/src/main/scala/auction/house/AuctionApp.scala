@@ -5,7 +5,7 @@ import java.util
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
 import auction.house.AuctionHouse.{ActorStopped, SellerActive}
-import auction.house.Seller.{StartAuction, StartAuctionFSM}
+import auction.house.Seller.{StartAuction, StartAuctionFSM, StartPersist}
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
@@ -18,6 +18,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 object AuctionHouse{
   case object Init
   case object InitFSM
+  case object InitPersist
   case object SellerActive
   case class ActorStopped(actorRef: ActorRef)
 }
@@ -36,7 +37,7 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       if(i == 2)items += "very old car"
       if(i == 1)items += "classic painting"
       if(i == 2)items += "antique painting"
-      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(2, "seconds"), 2, items.toList)))
+      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(30, "seconds"), 2, items.toList)))
     }
 
     for (i <- 0  until noBuyers) {
@@ -49,7 +50,15 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
     case AuctionHouse.Init =>
       init()
       for (i <- 0 until noSellers)
+        sellers(i) ! StartAuction
+    case AuctionHouse.InitFSM =>
+      init()
+      for (i <- 0 until noSellers)
         sellers(i) ! StartAuctionFSM
+    case AuctionHouse.InitPersist =>
+      init()
+      for (i <- 0 until noSellers)
+        sellers(i) ! StartPersist
     case SellerActive if inactiveSellers == 1 =>
       for (i <- 0  until noBuyers)
         buyers(i) ! Buyer.Init
@@ -71,7 +80,7 @@ object AuctionApp extends App {
   val mainActor = system.actorOf(Props(new AuctionHouse(3, 5)), "mainActor")
   val auctionSearch = system.actorOf(Props(new AuctionSearch), "auctionSearch")
 
-  mainActor ! AuctionHouse.Init
+  mainActor ! AuctionHouse.InitPersist
 
   Await.result(system.whenTerminated, Duration.Inf)
 }
