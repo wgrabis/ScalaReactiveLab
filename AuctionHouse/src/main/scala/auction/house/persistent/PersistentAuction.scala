@@ -11,6 +11,8 @@ import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.util.Try
 
+import scala.concurrent.duration._
+
 /**
   * Created by Admin on 2016-11-02.
   */
@@ -28,6 +30,10 @@ case class AuctionState(buyer: ActorRef, currentBid: Int, bidTimer: FiniteDurati
     AuctionState(newState.buyer, newState.currentBid, newState.bidTimer, newState.state)
   }
 
+  def updatedTime(timer: FiniteDuration): AuctionState = {
+    AuctionState(buyer, currentBid, timer, state)
+  }
+
   override def toString: String = {
     buyer.toString + ":" + currentBid.toString + ":" + bidTimer.toString
   }
@@ -39,6 +45,13 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
   var state = AuctionState(null, 0, null, PreInit)
 
   var dispatcher : Cancellable = null
+
+  var startTime : FiniteDuration = currentTime
+
+  def currentTime : FiniteDuration ={
+    System.currentTimeMillis() millisecond
+  }
+
 
   def startTimer(state: State, time: FiniteDuration): Unit ={
     Try(dispatcher.cancel())
@@ -59,7 +72,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
     }
   }
 
-  def updateState(newState: AuctionState): Unit = {
+  def updateState(oldState: AuctionState): Unit = {
+    val newState = oldState.updatedTime(oldState.bidTimer - (currentTime - startTime))
     state = state.updatedState(newState)
     startTimer(newState.state, newState.bidTimer)
     context.become(
@@ -91,9 +105,9 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
 
   def waitInit : Actor.Receive = LoggingReceive{
     case evt: Start =>
-      dispatcher = context.system.scheduler.scheduleOnce(evt.bidTimer, self, Timeout)
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Register(self, title)
 
+      startTime = currentTime
       persist(StateChange(AuctionState(null, 0, evt.bidTimer, Created))) {
         event => updateState(event.state)
       }
@@ -106,9 +120,9 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
         event => updateState(event.state)
       }
     case Timeout =>
-      dispatcher = context.system.scheduler.scheduleOnce(deleteTimer, self, DeleteTimeout)
       context.parent ! Auction.Ignored(self)
 
+      startTime = currentTime
       persist(StateChange(AuctionState(null, 0, deleteTimer, Ignored))) {
         event => updateState(event.state)
       }
@@ -125,8 +139,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
     case Timeout =>
       context.parent ! Sold(context.parent, state.buyer, state.currentBid)
       Try(state.buyer ! Sold(context.parent, state.buyer, state.currentBid))
-      dispatcher = context.system.scheduler.scheduleOnce(deleteTimer, self, DeleteTimeout)
 
+      startTime = currentTime
       persist(StateChange(AuctionState(state.buyer, state.currentBid, deleteTimer, SoldS))) {
         event => updateState(event.state)
       }
@@ -135,8 +149,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
 
   def awaitRelist() : Actor.Receive = LoggingReceive{
     case start : Start =>
-      dispatcher = context.system.scheduler.scheduleOnce(start.bidTimer, self, Timeout)
 
+      startTime = currentTime
       persist(StateChange(AuctionState(null, 0, start.bidTimer, Created))) {
         event => updateState(event.state)
       }
