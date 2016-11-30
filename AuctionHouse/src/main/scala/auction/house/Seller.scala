@@ -6,7 +6,7 @@ import akka.actor.{Actor, ActorRef, Props}
 import akka.event.LoggingReceive
 import auction.house.Auction.{AuctionDeleted, Sold, Start}
 import auction.house.AuctionHouse.{ActorStopped, SellerActive}
-import auction.house.Seller.{AskForAuction, StartAuction, StartAuctionFSM, StartPersist}
+import auction.house.Seller._
 import auction.house.persistent.PersistentAuction
 
 import scala.concurrent.duration.FiniteDuration
@@ -18,6 +18,7 @@ object Seller{
   case object StartAuction
   case object StartAuctionFSM
   case object StartPersist
+  case object StartTest
   case class AskForAuction(from: ActorRef)
 }
 
@@ -48,6 +49,13 @@ class Seller(bidTime: FiniteDuration, var timesReList: Int, auctionItems: List[S
         actor ! Start(self, bidTime)
       }
       context.actorSelection("/user/mainActor") ! SellerActive
+      context become awaitForAuction
+
+    case StartTest =>
+      for(item <- auctionItems) {
+        val actor = context.actorOf(Props(new Auction(item, FiniteDuration(2, "seconds"))))
+        actor ! Auction.StartTest(self, bidTime)
+      }
       context become awaitForAuction
   }
 

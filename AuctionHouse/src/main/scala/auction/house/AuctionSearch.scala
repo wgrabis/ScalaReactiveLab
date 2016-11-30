@@ -11,10 +11,12 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
   */
 
 object AuctionSearch{
-  case class Register(from: ActorRef, title: String)
-  case class Remove(title: String)
-  case class Search(from: ActorRef, request: String)
-  case class Get(from: ActorRef, request: String)
+  sealed trait RequestWork
+  sealed trait RegisterWork
+  case class Register(from: ActorRef, title: String) extends RegisterWork
+  case class Remove(title: String) extends RegisterWork
+  case class Search(from: ActorRef, request: String) extends RequestWork
+  case class Get(from: ActorRef, request: String) extends RequestWork
 
   case class ResponseSingle(auction: ActorRef)
   case class ResponseMultiple(auctions: Array[ActorRef])

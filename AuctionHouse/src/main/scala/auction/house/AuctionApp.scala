@@ -4,12 +4,14 @@ import java.util
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
-import auction.house.AuctionHouse.{ActorStopped, SellerActive}
-import auction.house.Seller.{StartAuction, StartAuctionFSM, StartPersist}
+import auction.house.AuctionHouse.{ActorStopped, SellerActive, TestShutdown}
+import auction.house.Seller.{StartAuction, StartAuctionFSM, StartPersist, StartTest}
+import auction.house.router.{MasterSearch, TestBuyer, TimeHelper}
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
-import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.concurrent.duration._
+import scala.concurrent._
 
 /**
   * Created by Admin on 2016-10-19.
@@ -20,7 +22,9 @@ object AuctionHouse{
   case object InitFSM
   case object InitPersist
   case object SellerActive
+  case object InitSpecial
   case class ActorStopped(actorRef: ActorRef)
+  case object TestShutdown
 }
 
 class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
@@ -28,6 +32,8 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
   var buyers : Array[ActorRef] = new Array[ActorRef](noBuyers)
 
   var inactiveSellers = noSellers
+
+  val timeHelper = new TimeHelper()
 
   def init() = {
     for (i <- 0 until noSellers) {
@@ -37,7 +43,7 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       if(i == 2)items += "very old car"
       if(i == 1)items += "classic painting"
       if(i == 2)items += "antique painting"
-      sellers(i) = context.actorOf(Props(new Seller(FiniteDuration(30, "seconds"), 2, items.toList)))
+      sellers(i) = context.actorOf(Props(new Seller(2 seconds, 2, items.toList)))
     }
 
     for (i <- 0  until noBuyers) {
@@ -46,7 +52,25 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
     }
   }
 
+  def initSpecialTest() = {
+    var items = ListBuffer.empty[String]
+    val testAuction = "test item"
+    for (i <- 0 until 50000){
+      var item = ""
+      for(x <- 0 until scala.util.Random.nextInt(50)){
+        item = item + " test"
+      }
+      items += item
+    }
+
+    sellers(0) = context.actorOf(Props(new Seller(60 seconds, 1, items.toList)))
+    buyers(0) = context.actorOf(Props(new TestBuyer(self, testAuction, 1000000)))
+  }
+
   def receive = LoggingReceive{
+    case AuctionHouse.InitSpecial =>
+      initSpecialTest()
+      sellers(0) ! StartTest
     case AuctionHouse.Init =>
       init()
       for (i <- 0 until noSellers)
@@ -60,6 +84,7 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       for (i <- 0 until noSellers)
         sellers(i) ! StartPersist
     case SellerActive if inactiveSellers == 1 =>
+      timeHelper.startMeasuer()
       for (i <- 0  until noBuyers)
         buyers(i) ! Buyer.Init
     case SellerActive =>
@@ -71,16 +96,23 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       noSellers -= 1
     case ActorStopped(_) =>
       noBuyers -= 1
+    case TestShutdown =>
+      val time = timeHelper.finishMeasue()
+      println("Requested test shutdown, turning off")
+      println("Time taken:")
+      println(time + " ns")
+      println("Terminating...")
+      context.system.terminate
   }
 }
 
 
 object AuctionApp extends App {
   val system = ActorSystem("Reactive2")
-  val mainActor = system.actorOf(Props(new AuctionHouse(3, 5)), "mainActor")
-  val auctionSearch = system.actorOf(Props(new AuctionSearch), "auctionSearch")
+  val mainActor = system.actorOf(Props(new AuctionHouse(5, 5)), "mainActor")
+  val auctionSearch = system.actorOf(Props(new MasterSearch(4)), "auctionSearch")
 
-  mainActor ! AuctionHouse.InitPersist
+  mainActor ! AuctionHouse.Init
 
   Await.result(system.whenTerminated, Duration.Inf)
 }

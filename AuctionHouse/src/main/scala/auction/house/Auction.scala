@@ -13,6 +13,7 @@ import ExecutionContext.Implicits.global
  */
 object Auction {
   case class Start(sellerAct : ActorRef, bidTimer: FiniteDuration)
+  case class StartTest(sellerAct : ActorRef, bidTimer: FiniteDuration)
   case class Bid(amount: Int, from: ActorRef){
     require(amount > 0)
   }
@@ -42,7 +43,12 @@ class Auction(title: String, deleteTimer: FiniteDuration) extends Actor{
       context.system.scheduler.scheduleOnce(bidTimer, self, Timeout)
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Register(self, title)
       context become awaitFirstBid
-
+    case StartTest(sellerAct, bidTimer) =>
+      seller = sellerAct
+      context.system.scheduler.scheduleOnce(bidTimer, self, Timeout)
+      context.actorSelection("/user/auctionSearch") ! AuctionSearch.Register(self, title)
+      context.actorSelection("/user/mainActor") ! SellerActive
+      context become awaitFirstBid
   }
 
   def awaitFirstBid : Actor.Receive = LoggingReceive{
