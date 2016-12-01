@@ -4,13 +4,13 @@ import akka.actor.{Actor, ActorRef, Cancellable}
 import akka.event.LoggingReceive
 import akka.persistence.{PersistentActor, SnapshotOffer, SnapshotSelectionCriteria}
 import auction.house.Auction._
+import auction.house.remote.Notifier.Notify
 import auction.house.{Auction, AuctionSearch}
 
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.util.Try
-
 import scala.concurrent.duration._
 
 /**
@@ -100,12 +100,17 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
       context.stop(self)
     }
 
+  def serializeActorName(actor: ActorRef): String ={
+    akka.serialization.Serialization.serializedActorPath(actor)
+  }
+
 
   val receiveCommand: Receive = waitInit
 
   def waitInit : Actor.Receive = LoggingReceive{
     case evt: Start =>
       context.actorSelection("/user/auctionSearch") ! AuctionSearch.Register(self, title)
+      context.actorSelection("/user/notifier") ! Notify(0, "", serializeActorName(evt.sellerAct), Created)
 
       startTime = currentTime
       persist(StateChange(AuctionState(null, 0, evt.bidTimer, Created))) {
@@ -116,11 +121,16 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
   def awaitFirstBid : Actor.Receive = LoggingReceive{
     case evt: Bid =>
       Try(state.buyer ! BidChanged(self, evt.amount))
+
+      context.actorSelection("/user/notifier") ! Notify(evt.amount, serializeActorName(evt.from), serializeActorName(context.parent), Activated)
+
       persist(StateChange(AuctionState(evt.from, evt.amount, state.bidTimer, Activated))) {
         event => updateState(event.state)
       }
     case Timeout =>
       context.parent ! Auction.Ignored(self)
+
+      context.actorSelection("/user/notifier") ! Notify(0, "", serializeActorName(context.parent), Ignored)
 
       startTime = currentTime
       persist(StateChange(AuctionState(null, 0, deleteTimer, Ignored))) {
@@ -131,6 +141,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
 
   def awaitBids() : Actor.Receive = LoggingReceive{
     case bid : Bid if bid.amount > state.currentBid =>
+      context.actorSelection("/user/notifier") ! Notify(bid.amount, serializeActorName(bid.from), serializeActorName(context.parent), Activated)
+
       persist(StateChange(AuctionState(bid.from, bid.amount, state.bidTimer, Activated))) {
         event => updateState(event.state)
       }
@@ -139,6 +151,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
     case Timeout =>
       context.parent ! Sold(context.parent, state.buyer, state.currentBid)
       Try(state.buyer ! Sold(context.parent, state.buyer, state.currentBid))
+
+      context.actorSelection("/user/notifier") ! Notify(state.currentBid, serializeActorName(state.buyer), serializeActorName(context.parent), SoldS)
 
       startTime = currentTime
       persist(StateChange(AuctionState(state.buyer, state.currentBid, deleteTimer, SoldS))) {
@@ -149,6 +163,8 @@ class PersistentAuction(title: String, deleteTimer: FiniteDuration) extends Pers
 
   def awaitRelist() : Actor.Receive = LoggingReceive{
     case start : Start =>
+
+      context.actorSelection("/user/notifier") ! Notify(0, "", serializeActorName(context.parent), Created)
 
       startTime = currentTime
       persist(StateChange(AuctionState(null, 0, start.bidTimer, Created))) {

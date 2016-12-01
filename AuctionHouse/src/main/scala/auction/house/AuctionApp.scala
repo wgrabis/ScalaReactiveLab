@@ -6,7 +6,9 @@ import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.event.LoggingReceive
 import auction.house.AuctionHouse.{ActorStopped, SellerActive, TestShutdown}
 import auction.house.Seller.{StartAuction, StartAuctionFSM, StartPersist, StartTest}
+import auction.house.remote.{AuctionPublisher, Notifier}
 import auction.house.router.{MasterSearch, TestBuyer, TimeHelper}
+import com.typesafe.config.ConfigFactory
 
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
@@ -43,7 +45,7 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
       if(i == 2)items += "very old car"
       if(i == 1)items += "classic painting"
       if(i == 2)items += "antique painting"
-      sellers(i) = context.actorOf(Props(new Seller(2 seconds, 2, items.toList)))
+      sellers(i) = context.actorOf(Props(new Seller(5 seconds, 2, items.toList)))
     }
 
     for (i <- 0  until noBuyers) {
@@ -89,13 +91,11 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
         buyers(i) ! Buyer.Init
     case SellerActive =>
       inactiveSellers -= 1
-    case ActorStopped(_) if noSellers == 0 && noBuyers == 1 =>
+    case ActorStopped(_) if noSellers == 1=>
       print("All auctions stopped, turning off")
       context.system.terminate
     case ActorStopped(from) if noSellers > 0=>
       noSellers -= 1
-    case ActorStopped(_) =>
-      noBuyers -= 1
     case TestShutdown =>
       val time = timeHelper.finishMeasue()
       println("Requested test shutdown, turning off")
@@ -108,11 +108,19 @@ class AuctionHouse(var noSellers: Int, var noBuyers: Int) extends Actor{
 
 
 object AuctionApp extends App {
-  val system = ActorSystem("Reactive2")
-  val mainActor = system.actorOf(Props(new AuctionHouse(5, 5)), "mainActor")
-  val auctionSearch = system.actorOf(Props(new MasterSearch(4)), "auctionSearch")
+  val configFactory = ConfigFactory.load()
+  val mainSystem = ActorSystem("Reactive2", configFactory.getConfig("auctions").withFallback(configFactory))
+  val mainActor = mainSystem.actorOf(Props(new AuctionHouse(5, 5)), "mainActor")
+  val auctionSearch = mainSystem.actorOf(Props(new MasterSearch(4)), "auctionSearch")
 
-  mainActor ! AuctionHouse.Init
 
-  Await.result(system.whenTerminated, Duration.Inf)
+  val publisherSystem = ActorSystem("Publisher", configFactory.getConfig("publisher").withFallback(configFactory))
+  val publisher = publisherSystem.actorOf(Props(new AuctionPublisher), "auctionPublisher")
+
+  val notifier = mainSystem.actorOf(Props(new Notifier()), "notifier")
+
+  mainActor ! AuctionHouse.InitPersist
+
+  Await.result(mainSystem.whenTerminated, Duration.Inf)
+  Await.result(publisherSystem.whenTerminated, Duration.Inf)
 }
